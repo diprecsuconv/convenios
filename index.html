@@ -343,11 +343,23 @@ document.getElementById("f-clear").addEventListener("click",()=>{clearF();rerend
 function parseCSV(t){const rows=[];let row=[],f="",i=0,q=false;t=String(t).replace(/\r\n/g,"\n").replace(/\r/g,"\n");while(i<t.length){const c=t[i];if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i+=2;continue;}q=false;i++;continue;}f+=c;i++;continue;}if(c==='"'){q=true;i++;continue;}if(c===','){row.push(f);f="";i++;continue;}if(c==='\n'){row.push(f);rows.push(row);row=[];f="";i++;continue;}f+=c;i++;}if(f!==""||row.length){row.push(f);rows.push(row);}return rows;}
 function csvObj(t){const rows=parseCSV(t);if(!rows.length)return[];const h=rows[0].map(x=>norm(x));const o=[];for(let r=1;r<rows.length;r++){const c=rows[r];if(!c[0]||!norm(c[0]))continue;const x={};h.forEach((k,j)=>{if(k)x[k]=c[j]!=null?norm(c[j]):"";});o.push(x);}return o;}
 function setSrc(t){const e=document.getElementById("src-label");if(e)e.textContent=t;}
-async function loadLive(){setSrc("carregando…");try{const b=u=>u+(u.includes("?")?"&":"?")+"_="+Date.now();
-  const [tc,tk]=await Promise.all([fetch(b(SHEET_CONV),{cache:"no-store"}).then(r=>r.text()),fetch(b(SHEET_CRON),{cache:"no-store"}).then(r=>r.text())]);
-  if(/<html/i.test(tc)||/<html/i.test(tk))throw 0;const ac=csvObj(tc),ak=csvObj(tk);if(ac.length)C=ac;if(ak.length)CR=ak;render();
-  setSrc("Google Sheets · atualizado às "+new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));
-}catch(e){setSrc("mostrando dados salvos · falha ao atualizar");}}
+function fetchCSV(url){
+  const u=url+(url.includes("?")?"&":"?")+"_="+Date.now();
+  const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),15000);
+  return fetch(u,{cache:"no-store",signal:ctrl.signal}).then(r=>{clearTimeout(to);if(!r.ok)throw new Error("HTTP "+r.status);return r.text();})
+    .then(t=>{if(/<html/i.test(t))throw new Error("não publicado");const a=csvObj(t);if(!a.length)throw new Error("vazio");return a;});
+}
+async function loadLive(){setSrc("carregando…");
+  const [rc,rk]=await Promise.allSettled([fetchCSV(SHEET_CONV),fetchCSV(SHEET_CRON)]);
+  let ok=0,fail=[];
+  if(rc.status==="fulfilled"){C=rc.value;ok++;}else fail.push("Convênios");
+  if(rk.status==="fulfilled"){CR=rk.value;ok++;}else fail.push("Cronograma");
+  render();
+  const h=new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  if(ok===2)setSrc("Google Sheets · atualizado às "+h);
+  else if(ok===1)setSrc("atualizado parcial ("+h+") · falhou: "+fail.join(", "));
+  else setSrc("mostrando dados salvos · falha ao atualizar");
+}
 document.getElementById("btn-refresh").addEventListener("click",loadLive);
 render();loadLive();
 </script></body></html>
