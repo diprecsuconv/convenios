@@ -107,7 +107,16 @@ h1{font-family:'Space Grotesk';font-weight:700;font-size:26px;line-height:1.1}
 .cc-progress{height:11px;border-radius:6px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line-2);margin:6px 0 4px}
 .cc-progress .fill{height:100%;background:linear-gradient(90deg,var(--conc),#38A169)}
 .parcelas{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.parc{border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:86px;background:var(--surface-2)}
+.parc{border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:86px;background:var(--surface-2);cursor:pointer;transition:transform .1s}
+.parc:hover{transform:translateY(-1px);border-color:var(--brand)}
+.parc.sel{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand) inset}
+.parc-detail{display:none;margin-top:12px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:12px 14px}
+.parc-detail.show{display:block}
+.pd-title{font-family:'Space Grotesk';font-weight:600;font-size:13px;margin-bottom:8px}
+.pd-info{display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-2)}
+.pd-info>div{display:flex;flex-direction:column}
+.pd-l{font-size:10px;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+.pd-v{font-family:'IBM Plex Mono';font-size:12.5px;font-weight:600;margin-top:2px}
 .parc.lib{background:var(--conc-l);border-color:#A7D8B5}
 .parc-n{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--ink-3)}
 .parc-v{font-family:'IBM Plex Mono';font-size:11.5px;font-weight:600;margin-top:2px}
@@ -251,14 +260,14 @@ function renderKPIs(){
   const valor=(noF?C:filtered()).reduce((s,c)=>s+numVal(c["Valor do convênio"]),0);
   const exec=C.filter(c=>norm(c["Status Atual"]).toLowerCase().includes("execu")).length;
   const cel=C.filter(c=>norm(c["Status Atual"]).toLowerCase().includes("celebra")).length;
-  const extr=C.filter(convExtrapolado).length;
+  const extr=todasEtapasAbertas().filter(e=>e.prazo<HOJE).length;
   const bloco=C.filter(isBloco).length;
   const cards=[
     {n:C.length,l:"Convênios",tag:"ver todos",c:"var(--brand)",act:"all",active:noF},
     {n:moneyF(valor),l:"Valor acompanhado",tag:noF?"soma dos convênios":"nesta seleção",c:"var(--gold)"},
     {n:exec,l:"Em execução",tag:"clique para filtrar",c:"var(--conc)",act:"kw:execu",active:F.statusKw==="execu"},
     {n:cel,l:"Em análise (Celebração)",tag:"clique para filtrar",c:"var(--cel)",act:"kw:celebra",active:F.statusKw==="celebra"},
-    {n:extr,l:"Prazo extrapolado",tag:"etapas em atraso",c:"var(--venc)",act:"mg:extrapolado",active:F.mgmt==="extrapolado",mgmt:1},
+    {n:extr,l:"Prazo extrapolado",tag:"parcelas atrasadas · ver agenda",c:"var(--venc)",act:"mg:extrapolado",active:F.mgmt==="extrapolado",mgmt:1},
     {n:bloco,l:"Em bloco",tag:"situação DIPREC",c:"var(--bloco)",act:"mg:bloco",active:F.mgmt==="bloco",mgmt:1},
   ];
   const el=document.getElementById("kpis");el.style.gridTemplateColumns=`repeat(${cards.length},minmax(0,1fr))`;
@@ -296,14 +305,7 @@ function renderAgenda(){
   const B={fora:{l:"Fora do prazo",its:fora,c:"var(--venc)"},p7:{l:"Próximos 7 dias",its:p7,c:"var(--pend)"},p30:{l:"Em 8–30 dias",its:p30,c:"var(--brand)"},dep:{l:"Mais adiante",its:dep,c:"var(--conc)"}};
   if(!prazoBucket||!B[prazoBucket].its.length)prazoBucket=(fora.length?"fora":p7.length?"p7":p30.length?"p30":"dep");
   const badge=d=>{const n=dd(d);if(n<0)return `<span class="ag-days" style="background:var(--venc-l);color:var(--venc)">${-n} ${-n===1?'dia':'dias'} de atraso</span>`;if(n===0)return `<span class="ag-days" style="background:var(--pend-l);color:var(--pend)">vence hoje</span>`;return `<span class="ag-days" style="background:${n<=7?'var(--pend-l)':'var(--conc-l)'};color:${n<=7?'var(--pend)':'var(--conc)'}">faltam ${n} ${n===1?'dia':'dias'}</span>`;};
-  const tl=e=>{const steps=timelineParc(e.parc);const ddx=x=>Math.round((x-HOJE)/864e5);
-    return `<div class="tl">`+steps.map(s=>{const n=ddx(s.prazo);
-      let ic,cls,extra;
-      if(s.na){ic="—";cls="na";extra="não se aplica";}
-      else if(s.cumprido){ic="✓";cls="ok";extra="cumprido";}
-      else if(n<0){ic="!";cls="late";extra=`vencido há ${-n} ${-n===1?'dia':'dias'}`;}
-      else {ic="○";cls="wait";extra=`faltam ${n} ${n===1?'dia':'dias'}`;}
-      return `<div class="tl-step ${cls}"><span class="tl-ic">${ic}</span><span class="tl-et">${s.etapa}</span><span class="tl-dt">${fmtBR(s.prazo)}</span><span class="tl-ex">${extra}</span></div>`;}).join("")+`</div>`;};
+  const tl=e=>tlHTML(e.parc);
   const item=e=>`<div class="ag-item" data-open="0"><div class="ag-date"><div class="d">${String(e.prazo.getDate()).padStart(2,"0")}</div><div class="m">${MES[e.prazo.getMonth()]}/${String(e.prazo.getFullYear()).slice(2)}</div></div>
     <div class="ag-body"><div class="ag-inst">${e.inst} <span class="ag-parc">· ${e.np}ª parcela</span> <span class="ag-exp">⌄</span></div>
     <div class="ag-proc">${e.proc}</div>
@@ -317,16 +319,35 @@ function renderAgenda(){
   el.querySelectorAll(".pchip").forEach(c=>c.addEventListener("click",()=>{prazoBucket=c.dataset.b;renderAgenda();}));
   el.querySelectorAll(".ag-item").forEach(it=>it.addEventListener("click",()=>{it.classList.toggle("open");}));
 }
+function tlHTML(p){const steps=timelineParc(p);const ddx=x=>Math.round((x-HOJE)/864e5);
+  if(!steps.length)return `<div style="font-size:12px;color:var(--ink-3)">Parcela sem data de desembolso lançada.</div>`;
+  return `<div class="tl">`+steps.map(s=>{const n=ddx(s.prazo);let ic,cls,extra;
+    if(s.na){ic="—";cls="na";extra="não se aplica";}
+    else if(s.cumprido){ic="✓";cls="ok";extra="cumprido";}
+    else if(n<0){ic="!";cls="late";extra=`vencido há ${-n} ${-n===1?'dia':'dias'}`;}
+    else {ic="○";cls="wait";extra=`faltam ${n} ${n===1?'dia':'dias'}`;}
+    return `<div class="tl-step ${cls}"><span class="tl-ic">${ic}</span><span class="tl-et">${s.etapa}</span><span class="tl-dt">${fmtBR(s.prazo)}</span><span class="tl-ex">${extra}</span></div>`;}).join("")+`</div>`;}
+function parcDetail(p){const dd=pd(p[K.dd]);
+  const info=`<div class="pd-info"><div><span class="pd-l">Valor da parcela</span><span class="pd-v">${moneyF(p[K.val])}</span></div><div><span class="pd-l">Data do desembolso</span><span class="pd-v">${dd?fmtBR(dd):"sem data"}</span></div><div><span class="pd-l">Liberada?</span><span class="pd-v">${norm(p[K.lib])||"—"}</span></div></div>`;
+  return `<div class="pd-title">Etapas da ${+p[K.np]}ª parcela</div>${tlHTML(p)}${info}`;}
 function cronCards(){const el=document.getElementById("cron-cards");const com=filtered().filter(c=>parcelasDe(c[K.proc]).length>0);
   document.getElementById("cron-cnt").textContent=`${com.length} convênios com parcelas`;
   el.innerHTML=com.map(c=>{const proc=c[K.proc];const ps=parcelasDe(proc);const prev=prevValor(proc);const lib=libValor(proc);const pct=prev?Math.round(lib/prev*100):0;const sc=stColor(c["Status Atual"]);
-    const parc=ps.map(p=>{const isLib=done(p[K.lib]);const dd=pd(p[K.dd]);const e=etapaAtual(p);
+    const parc=ps.map((p,pi)=>{const isLib=done(p[K.lib]);const dd=pd(p[K.dd]);const e=etapaAtual(p);
       let badge=isLib?`<span class="parc-badge" style="background:var(--conc-l);color:var(--conc)">liberada</span>`:(e&&+p[K.np]>=3?`<span class="parc-badge" style="background:var(--pend-l);color:var(--pend)">${e.etapa.split(" ")[0]}</span>`:"");
-      return `<div class="parc ${isLib?'lib':''}"><div class="parc-n">${p[K.np]}ª parcela</div><div class="parc-v">${moneyF(p[K.val])}</div><div class="parc-d">${dd?fmtBR(dd):"sem data"}</div>${badge}</div>`;}).join("");
+      return `<div class="parc ${isLib?'lib':''}" data-proc="${proc}" data-np="${p[K.np]}"><div class="parc-n">${p[K.np]}ª parcela</div><div class="parc-v">${moneyF(p[K.val])}</div><div class="parc-d">${dd?fmtBR(dd):"sem data"}</div>${badge}</div>`;}).join("");
     return `<div class="conv-card"><div class="cc-head"><div><div class="cc-inst">${shortInst(c[K.inst])}</div><div class="cc-proc">${proc}</div></div><span class="cc-status" style="background:${sc}1f;color:${sc}">${norm(c["Status Atual"])}${isBloco(c)?' · em bloco':''}</span></div>
       <div class="cc-money"><div><div class="m">Valor</div><div class="mv">${moneyF(c["Valor do convênio"])}</div></div><div><div class="m">Desembolsado</div><div class="mv" style="color:var(--conc)">${moneyF(lib)}</div></div><div><div class="m">Previsto</div><div class="mv">${moneyF(prev)}</div></div></div>
-      <div class="cc-progress"><div class="fill" style="width:${pct}%"></div></div><div style="font-size:11px;color:var(--ink-3)">${pct}% desembolsado</div><div class="parcelas">${parc}</div></div>`;}).join("");
+      <div class="cc-progress"><div class="fill" style="width:${pct}%"></div></div><div style="font-size:11px;color:var(--ink-3)">${pct}% desembolsado · <span style="color:var(--brand)">clique numa parcela para ver as etapas</span></div><div class="parcelas">${parc}</div><div class="parc-detail"></div></div>`;}).join("");
   if(!com.length)el.innerHTML=`<div class="ag-empty" style="background:var(--surface);border:1px solid var(--line-2);border-radius:var(--radius)">Nenhum convênio com parcelas nesta seleção.</div>`;
+  el.querySelectorAll(".parc").forEach(pc=>pc.addEventListener("click",()=>{
+    const card=pc.closest(".conv-card");const det=card.querySelector(".parc-detail");
+    const p=parcelasDe(pc.dataset.proc).find(x=>String(x[K.np])===pc.dataset.np);
+    const already=pc.classList.contains("sel");
+    card.querySelectorAll(".parc").forEach(x=>x.classList.remove("sel"));
+    if(already){det.classList.remove("show");det.innerHTML="";return;}
+    pc.classList.add("sel");det.innerHTML=parcDetail(p);det.classList.add("show");
+  }));
 }
 function placeProcessos(){const bl=document.getElementById("processos-block");const t=document.getElementById(isFiltered()?"proc-top":"proc-bottom");if(bl&&t&&bl.parentElement!==t)t.appendChild(bl);}
 function di(l,v,f){v=norm(v);if(!v||v.toUpperCase()==="NÃO SE APLICA")return "";return `<div class="det-item ${f?'det-full':''}"><div class="det-lbl">${l}</div><div class="det-val">${v}</div></div>`;}
