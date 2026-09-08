@@ -173,14 +173,14 @@ const MES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","de
 const HOJE=new Date();HOJE.setHours(0,0,0,0);
 function pd(v){if(!v)return null;const s=String(v);let m=s.match(/(\d{4})-(\d{2})-(\d{2})/);if(m){const d=new Date(+m[1],+m[2]-1,+m[3]);d.setHours(0,0,0,0);return d;}m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m){const d=new Date(+m[3],+m[2]-1,+m[1]);d.setHours(0,0,0,0);return d;}return null;}
 function fmtBR(d){return d?`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`:"—";}
-function money(v){v=numVal(v);if(v>=1e6)return "R$ "+(v/1e6).toFixed(1).replace(".",",")+" mi";if(v>=1e3)return "R$ "+(v/1e3).toFixed(0)+" mil";return "R$ "+v.toFixed(0);}
+function money(v){v=numVal(v);if(v>=1e6)return "R$ "+(v/1e6).toFixed(2).replace(".",",")+" mi";if(v>=1e3)return "R$ "+(v/1e3).toFixed(0)+" mil";return "R$ "+v.toFixed(0);}
+function moneyF(v){return "R$ "+numVal(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});}
 function numVal(v){if(typeof v==="number")return v;const n=parseFloat(String(v==null?"":v).replace(/[^\d.-]/g,''));return isNaN(n)?0:n;}
 function norm(s){return String(s==null?"":s).replace(/\s+/g," ").trim();}
 function shortInst(s){return norm(s).split(" - ")[0].split(" – ")[0];}
 const K={proc:"Processo",inst:"Instituição (OSC)",np:"Nº parcela",dd:"Data do desembolso",val:"Valor",lib:"Liberada?",
 nfd:"Notificação feita?",pcd:"PC parcial apresentada?",agd:"Análise GRDOC/GATEF feita?",gedd:"Consolidação GEDEN feita?"};
-const STC={"em execução":"var(--conc)","em análise pela dir de celebração":"var(--cel)","análise técnica pelas gerências de prestação de contas":"var(--pend)"};
-function stColor(s){return STC[norm(s).toLowerCase()]||"var(--brand)";}
+function stColor(s){s=norm(s).toLowerCase();if(s.includes("execu"))return "var(--conc)";if(s.includes("celebra"))return "var(--cel)";if(s.includes("gerênc")||s.includes("gerenc")||s.includes("análise técnica")||s.includes("analise tecnica"))return "var(--pend)";if(s.includes("finaliz")||s.includes("aprova"))return "var(--geden)";if(s.includes("dilig"))return "var(--bloco)";return "var(--brand)";}
 function done(v){const s=norm(v).toLowerCase();return ["cumprido","sim","concluído","concluido","não se aplica","nao se aplica","feito"].includes(s);}
 function getF(p,fk){if(Array.isArray(fk)){for(const k of fk){if(p[k]!=null&&norm(p[k])!=="")return p[k];}return "";}return p[fk];}
 function isBloco(c){return norm(c["Situação DIPREC"]).toLowerCase().includes("bloco");}
@@ -213,12 +213,13 @@ function timelineParc(p){const dd=pd(p[K.dd]);if(!dd)return [];const np=+p[K.np]
   return steps.map(([etapa,resp,c,off,fk])=>{const prazo=new Date(dd-off*864e5);prazo.setHours(0,0,0,0);const fv=getF(p,fk);const cumprido=done(fv);const na=norm(fv).toLowerCase().includes("aplica");return {etapa,resp,c,prazo,cumprido,na,off};});}
 
 let prazoBucket="";
-const F={status:"",parl:"",busca:"",mgmt:""};
-function isFiltered(){return !!(F.status||F.parl||F.busca||F.mgmt);}
-function convExtrapolado(c){return parcelasDe(c[K.proc]).some(p=>{const e=etapaAtual(p);return e&&e.prazo<HOJE;});}
+const F={status:"",statusKw:"",parl:"",busca:"",mgmt:""};
+function isFiltered(){return !!(F.status||F.statusKw||F.parl||F.busca||F.mgmt);}
+function convExtrapolado(c){return parcelasDe(c[K.proc]).some(p=>{const e=etapaAtual(p);return e&&e.etapa!=="Desembolso"&&e.prazo<HOJE;});}
 function filtered(){const q=F.busca.toLowerCase().trim();
   return C.filter(c=>{
     if(F.status&&norm(c["Status Atual"])!==F.status)return false;
+    if(F.statusKw&&!norm(c["Status Atual"]).toLowerCase().includes(F.statusKw))return false;
     if(F.parl&&norm(c["Parlamentar"])!==F.parl)return false;
     if(F.mgmt==="bloco"&&!isBloco(c))return false;
     if(F.mgmt==="extrapolado"&&!convExtrapolado(c))return false;
@@ -228,7 +229,7 @@ function filtered(){const q=F.busca.toLowerCase().trim();
 function uniq(a){return [...new Set(a)];}
 function fillSel(id,items,all){const s=document.getElementById(id);const cur=s.value;s.innerHTML=`<option value="">${all}</option>`+items.map(i=>`<option>${i}</option>`).join("");s.value=cur;}
 function buildFilters(){fillSel("f-status",uniq(C.map(c=>norm(c["Status Atual"])).filter(Boolean)).sort(),"Todos os status");fillSel("f-parl",uniq(C.map(c=>norm(c["Parlamentar"])).filter(Boolean)).sort(),"Todos os parlamentares");}
-function clearF(){F.status="";F.parl="";F.busca="";F.mgmt="";document.getElementById("f-status").value="";document.getElementById("f-parl").value="";document.getElementById("f-busca").value="";}
+function clearF(){F.status="";F.statusKw="";F.parl="";F.busca="";F.mgmt="";document.getElementById("f-status").value="";document.getElementById("f-parl").value="";document.getElementById("f-busca").value="";}
 
 function renderKPIs(){
   const noF=!isFiltered();
@@ -239,17 +240,17 @@ function renderKPIs(){
   const bloco=C.filter(isBloco).length;
   const cards=[
     {n:C.length,l:"Convênios",tag:"ver todos",c:"var(--brand)",act:"all",active:noF},
-    {n:money(valor),l:"Valor acompanhado",tag:noF?"soma dos convênios":"nesta seleção",c:"var(--gold)"},
-    {n:exec,l:"Em execução",tag:"clique para filtrar",c:"var(--conc)",act:"st:em EXECUÇÃO",active:F.status==="em EXECUÇÃO"},
-    {n:cel,l:"Em análise (Celebração)",tag:"clique para filtrar",c:"var(--cel)",act:"st:Em ANÁLISE PELA DIR DE CELEBRAÇÃO",active:F.status==="Em ANÁLISE PELA DIR DE CELEBRAÇÃO"},
-    {n:extr,l:"Prazo extrapolado",tag:"parcelas em atraso",c:"var(--venc)",act:"mg:extrapolado",active:F.mgmt==="extrapolado",mgmt:1},
+    {n:moneyF(valor),l:"Valor acompanhado",tag:noF?"soma dos convênios":"nesta seleção",c:"var(--gold)"},
+    {n:exec,l:"Em execução",tag:"clique para filtrar",c:"var(--conc)",act:"kw:execu",active:F.statusKw==="execu"},
+    {n:cel,l:"Em análise (Celebração)",tag:"clique para filtrar",c:"var(--cel)",act:"kw:celebra",active:F.statusKw==="celebra"},
+    {n:extr,l:"Prazo extrapolado",tag:"etapas em atraso",c:"var(--venc)",act:"mg:extrapolado",active:F.mgmt==="extrapolado",mgmt:1},
     {n:bloco,l:"Em bloco",tag:"situação DIPREC",c:"var(--bloco)",act:"mg:bloco",active:F.mgmt==="bloco",mgmt:1},
   ];
   const el=document.getElementById("kpis");el.style.gridTemplateColumns=`repeat(${cards.length},minmax(0,1fr))`;
   el.innerHTML=cards.map(c=>`<div class="kpi ${c.act?'clk':''} ${c.active?'active':''} ${c.mgmt?'mgmt':''}" data-act="${c.act||''}" style="--c:${c.c}">${c.mgmt?'<span class="kpi-mgmt">gestão</span>':''}<div class="n">${c.n}</div><div class="l">${c.l}</div><div class="tag">${c.tag}</div></div>`).join("");
-  el.querySelectorAll(".kpi.clk").forEach(k=>k.addEventListener("click",()=>{const a=k.dataset.act;clearF();
-    if(a.startsWith("st:")){const v=a.slice(3);F.status=v;document.getElementById("f-status").value=v;}
-    else if(a.startsWith("mg:")){F.mgmt=a.slice(3);}
+  el.querySelectorAll(".kpi.clk").forEach(k=>k.addEventListener("click",()=>{const a=k.dataset.act;const wasKw=F.statusKw,wasMg=F.mgmt;clearF();
+    if(a.startsWith("kw:")){const v=a.slice(3);F.statusKw=(wasKw===v?"":v);}
+    else if(a.startsWith("mg:")){const v=a.slice(3);F.mgmt=(wasMg===v?"":v);}
     rerender();}));
 }
 function renderStatus(){const m={};C.forEach(c=>{const s=norm(c["Status Atual"])||"—";m[s]=(m[s]||0)+1;});
@@ -304,9 +305,9 @@ function cronCards(){const el=document.getElementById("cron-cards");const com=fi
   el.innerHTML=com.map(c=>{const proc=c[K.proc];const ps=parcelasDe(proc);const prev=prevValor(proc);const lib=libValor(proc);const pct=prev?Math.round(lib/prev*100):0;const sc=stColor(c["Status Atual"]);
     const parc=ps.map(p=>{const isLib=done(p[K.lib]);const dd=pd(p[K.dd]);const e=etapaAtual(p);
       let badge=isLib?`<span class="parc-badge" style="background:var(--conc-l);color:var(--conc)">liberada</span>`:(e&&+p[K.np]>=3?`<span class="parc-badge" style="background:var(--pend-l);color:var(--pend)">${e.etapa.split(" ")[0]}</span>`:"");
-      return `<div class="parc ${isLib?'lib':''}"><div class="parc-n">${p[K.np]}ª parcela</div><div class="parc-v">${money(p[K.val])}</div><div class="parc-d">${dd?fmtBR(dd):"sem data"}</div>${badge}</div>`;}).join("");
+      return `<div class="parc ${isLib?'lib':''}"><div class="parc-n">${p[K.np]}ª parcela</div><div class="parc-v">${moneyF(p[K.val])}</div><div class="parc-d">${dd?fmtBR(dd):"sem data"}</div>${badge}</div>`;}).join("");
     return `<div class="conv-card"><div class="cc-head"><div><div class="cc-inst">${shortInst(c[K.inst])}</div><div class="cc-proc">${proc}</div></div><span class="cc-status" style="background:${sc}1f;color:${sc}">${norm(c["Status Atual"])}${isBloco(c)?' · em bloco':''}</span></div>
-      <div class="cc-money"><div><div class="m">Valor</div><div class="mv">${money(c["Valor do convênio"])}</div></div><div><div class="m">Desembolsado</div><div class="mv" style="color:var(--conc)">${money(lib)}</div></div><div><div class="m">Previsto</div><div class="mv">${money(prev)}</div></div></div>
+      <div class="cc-money"><div><div class="m">Valor</div><div class="mv">${moneyF(c["Valor do convênio"])}</div></div><div><div class="m">Desembolsado</div><div class="mv" style="color:var(--conc)">${moneyF(lib)}</div></div><div><div class="m">Previsto</div><div class="mv">${moneyF(prev)}</div></div></div>
       <div class="cc-progress"><div class="fill" style="width:${pct}%"></div></div><div style="font-size:11px;color:var(--ink-3)">${pct}% desembolsado</div><div class="parcelas">${parc}</div></div>`;}).join("");
   if(!com.length)el.innerHTML=`<div class="ag-empty" style="background:var(--surface);border:1px solid var(--line-2);border-radius:var(--radius)">Nenhum convênio com parcelas nesta seleção.</div>`;
 }
@@ -314,9 +315,9 @@ function placeProcessos(){const bl=document.getElementById("processos-block");co
 function di(l,v,f){v=norm(v);if(!v||v.toUpperCase()==="NÃO SE APLICA")return "";return `<div class="det-item ${f?'det-full':''}"><div class="det-lbl">${l}</div><div class="det-val">${v}</div></div>`;}
 function diD(l,v){const d=pd(v);return d?di(l,fmtBR(d)):"";}
 function detail(c){const P=parcelasDe(c[K.proc]);
-  const dados=[di("Processo",c[K.proc]),di("Parlamentar",c["Parlamentar"]),di("Emenda",c["Emenda"]),di("Instrumento",c["Instrumento"]),di("Projeto",c["Projeto"],true),di("Valor",money(c["Valor do convênio"])),di("Status atual",c["Status Atual"]),di("Situação DIPREC",c["Situação DIPREC"])].filter(Boolean).join("");
+  const dados=[di("Processo",c[K.proc]),di("Parlamentar",c["Parlamentar"]),di("Emenda",c["Emenda"]),di("Instrumento",c["Instrumento"]),di("Projeto",c["Projeto"],true),di("Valor",moneyF(c["Valor do convênio"])),di("Status atual",c["Status Atual"]),di("Situação DIPREC",c["Situação DIPREC"])].filter(Boolean).join("");
   const prazos=[diD("Encerramento execução",c["Encerramento da execução"]),diD("Relatório OSC (prazo)",c["Relatório OSC - Data Prazo"]),diD("Parecer comissão (prazo)",c["Parecer comissão - Data Prazo"]),diD("GRDOC (prazo)",c["GRDOC - Data Prazo"]),diD("GATEF (prazo)",c["GATEF - Data Prazo"]),diD("Consolidação DIPREC (prazo)",c["DIPREC - Data Prazo"]||c["GEDEN - Data Prazo"])].filter(Boolean).join("");
-  const tot=[di("Total previsto",money(prevValor(c[K.proc]))),di("Já desembolsado",money(libValor(c[K.proc]))),di("Saldo a liberar",money(prevValor(c[K.proc])-libValor(c[K.proc]))),di("Parcelas",String(P.length))].join("");
+  const tot=[di("Total previsto",moneyF(prevValor(c[K.proc]))),di("Já desembolsado",moneyF(libValor(c[K.proc]))),di("Saldo a liberar",moneyF(prevValor(c[K.proc])-libValor(c[K.proc]))),di("Parcelas",String(P.length))].join("");
   let h=`<div class="det-sec">Dados</div><div class="det-grid">${dados}</div>`;
   if(prazos)h+=`<div class="det-sec">Prazos das fases</div><div class="det-grid">${prazos}</div>`;
   h+=`<div class="det-sec">Desembolso</div><div class="det-grid">${tot}</div>`;
@@ -326,7 +327,7 @@ function renderTable(data){const el=document.getElementById("table");
   if(!data.length){el.innerHTML=`<div class="table-empty">Nenhum convênio encontrado.</div>`;document.getElementById("tbl-count").textContent=`0 de ${C.length}`;return;}
   let html=`<div class="tbl-head"><span>Processo</span><span>Instituição / Projeto</span><span>Parlamentar</span><span>Valor</span><span>Status</span></div>`;
   data.forEach(c=>{const sc=stColor(c["Status Atual"]);
-    html+=`<div class="trow"><div class="t-proc">${norm(c[K.proc])}</div><div><div class="t-inst">${shortInst(c[K.inst])}</div><div class="t-sub">${norm(c["Projeto"])||""}</div></div><div style="font-size:12px">${norm(c["Parlamentar"])||"—"}</div><div class="bv">${money(c["Valor do convênio"])}</div><div class="t-statuscell"><span class="chip" style="background:${sc}1f;color:${sc}">${norm(c["Status Atual"])}</span><span class="t-exp">⌄</span></div></div>`+detail(c);
+    html+=`<div class="trow"><div class="t-proc">${norm(c[K.proc])}</div><div><div class="t-inst">${shortInst(c[K.inst])}</div><div class="t-sub">${norm(c["Projeto"])||""}</div></div><div style="font-size:12px">${norm(c["Parlamentar"])||"—"}</div><div class="bv">${moneyF(c["Valor do convênio"])}</div><div class="t-statuscell"><span class="chip" style="background:${sc}1f;color:${sc}">${norm(c["Status Atual"])}</span><span class="t-exp">⌄</span></div></div>`+detail(c);
   });
   html+=`<div class="tbl-foot">${data.length} de ${C.length} convênios</div>`;el.innerHTML=html;
   document.getElementById("tbl-count").textContent=`${data.length} de ${C.length}`;
@@ -334,7 +335,7 @@ function renderTable(data){const el=document.getElementById("table");
 }
 function render(){resolveKeys();buildFilters();renderKPIs();renderAgenda();renderStatus();renderDonut();cronCards();renderTable(filtered());placeProcessos();}
 function rerender(){renderKPIs();cronCards();renderTable(filtered());placeProcessos();}
-document.getElementById("f-status").addEventListener("change",e=>{F.status=e.target.value;F.mgmt="";rerender();});
+document.getElementById("f-status").addEventListener("change",e=>{F.status=e.target.value;F.statusKw="";F.mgmt="";rerender();});
 document.getElementById("f-parl").addEventListener("change",e=>{F.parl=e.target.value;rerender();});
 document.getElementById("f-busca").addEventListener("input",e=>{F.busca=e.target.value;rerender();});
 document.getElementById("f-clear").addEventListener("click",()=>{clearF();rerender();});
