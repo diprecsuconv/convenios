@@ -175,7 +175,11 @@ function pd(v){if(!v)return null;const s=String(v);let m=s.match(/(\d{4})-(\d{2}
 function fmtBR(d){return d?`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`:"—";}
 function money(v){v=numVal(v);if(v>=1e6)return "R$ "+(v/1e6).toFixed(2).replace(".",",")+" mi";if(v>=1e3)return "R$ "+(v/1e3).toFixed(0)+" mil";return "R$ "+v.toFixed(0);}
 function moneyF(v){return "R$ "+numVal(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});}
-function numVal(v){if(typeof v==="number")return v;const n=parseFloat(String(v==null?"":v).replace(/[^\d.-]/g,''));return isNaN(n)?0:n;}
+function numVal(v){if(typeof v==="number")return v;let s=String(v==null?"":v).trim();if(!s)return 0;
+  s=s.replace(/R\$/gi,"").replace(/\s/g,"");
+  if(s.includes(",")){s=s.replace(/\./g,"").replace(",",".");}          // BR: 8.533.171,00 -> 8533171.00
+  else if((s.match(/\./g)||[]).length>1){s=s.replace(/\./g,"");}        // 8.533.171 -> 8533171
+  const n=parseFloat(s.replace(/[^\d.-]/g,""));return isNaN(n)?0:n;}
 function norm(s){return String(s==null?"":s).replace(/\s+/g," ").trim();}
 function shortInst(s){return norm(s).split(" - ")[0].split(" – ")[0];}
 const K={proc:"Processo",inst:"Instituição (OSC)",np:"Nº parcela",dd:"Data do desembolso",val:"Valor",lib:"Liberada?",
@@ -190,6 +194,16 @@ function prevValor(proc){return parcelasDe(proc).reduce((s,p)=>s+numVal(p[K.val]
 // etapa atual de uma parcela (a 1ª não cumprida). retorna {etapa,resp,c,prazo} ou null se tudo ok
 function etDef(){return [["Notificação da Comissão","Comissão","var(--comissao)",30,K.nfd],["PC parcial (OSC)","OSC","var(--osc)",20,K.pcd],["Análise GRDOC+GATEF","GRDOC/GATEF","var(--tec)",10,K.agd],["Consolidação DIPREC","DIPREC","var(--geden)",5,K.gedd],["Desembolso","—","var(--brand)",0,K.lib]];}
 function findKey(row,kws){for(const k in row){const kk=norm(k).toLowerCase();if(kws.every(w=>kk.includes(w)))return k;}return null;}
+function pickVal(r,exact,kws){for(const k in r){if(norm(k).toLowerCase()===exact)return r[k];}const k2=findKey(r,kws);return k2!=null?r[k2]:undefined;}
+function cvNorm(r){const o=Object.assign({},r);const set=(canon,val)=>{if(val!==undefined&&(o[canon]===undefined||norm(o[canon])===""))o[canon]=val;};
+  set("Processo",pickVal(r,"processo",["processo"]));
+  set("Instituição (OSC)",pickVal(r,"instituição (osc)",["institu"]));
+  set("Parlamentar",pickVal(r,"parlamentar",["parlamentar"]));
+  set("Projeto",pickVal(r,"projeto",["projeto"]));
+  set("Valor do convênio",pickVal(r,"valor do convênio",["valor"]));
+  set("Status Atual",pickVal(r,"status atual",["status"]));
+  set("Situação DIPREC",pickVal(r,"situação diprec",["situa","diprec"]));
+  return o;}
 function resolveKeys(){const p=CR[0]||{};
   K.proc=findKey(p,["processo"])||K.proc;
   K.inst=findKey(p,["institu"])||K.inst;
@@ -333,7 +347,7 @@ function renderTable(data){const el=document.getElementById("table");
   document.getElementById("tbl-count").textContent=`${data.length} de ${C.length}`;
   el.querySelectorAll(".trow").forEach(row=>row.addEventListener("click",()=>{const d=row.nextElementSibling;const op=row.classList.toggle("open");if(d&&d.classList.contains("trow-detail"))d.classList.toggle("show",op);}));
 }
-function render(){resolveKeys();buildFilters();renderKPIs();renderAgenda();renderStatus();renderDonut();cronCards();renderTable(filtered());placeProcessos();}
+function render(){resolveKeys();C=C.map(cvNorm);buildFilters();renderKPIs();renderAgenda();renderStatus();renderDonut();cronCards();renderTable(filtered());placeProcessos();}
 function rerender(){renderKPIs();cronCards();renderTable(filtered());placeProcessos();}
 document.getElementById("f-status").addEventListener("change",e=>{F.status=e.target.value;F.statusKw="";F.mgmt="";rerender();});
 document.getElementById("f-parl").addEventListener("change",e=>{F.parl=e.target.value;rerender();});
@@ -354,9 +368,9 @@ async function loadLive(){setSrc("carregando…");
   let ok=0,fail=[];
   if(rc.status==="fulfilled"){C=rc.value;ok++;}else fail.push("Convênios");
   if(rk.status==="fulfilled"){CR=rk.value;ok++;}else fail.push("Cronograma");
-  render();
+  try{render();}catch(e){console.error("render:",e);}
   const h=new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
-  if(ok===2)setSrc("Google Sheets · atualizado às "+h);
+  if(ok===2)setSrc("Google Sheets · "+C.length+" convênios · atualizado "+h);
   else if(ok===1)setSrc("atualizado parcial ("+h+") · falhou: "+fail.join(", "));
   else setSrc("mostrando dados salvos · falha ao atualizar");
 }
