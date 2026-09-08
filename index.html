@@ -182,21 +182,35 @@ nfd:"Notificação feita?",pcd:"PC parcial apresentada?",agd:"Análise GRDOC/GAT
 const STC={"em execução":"var(--conc)","em análise pela dir de celebração":"var(--cel)","análise técnica pelas gerências de prestação de contas":"var(--pend)"};
 function stColor(s){return STC[norm(s).toLowerCase()]||"var(--brand)";}
 function done(v){const s=norm(v).toLowerCase();return ["cumprido","sim","concluído","concluido","não se aplica","nao se aplica","feito"].includes(s);}
+function getF(p,fk){if(Array.isArray(fk)){for(const k of fk){if(p[k]!=null&&norm(p[k])!=="")return p[k];}return "";}return p[fk];}
 function isBloco(c){return norm(c["Situação DIPREC"]).toLowerCase().includes("bloco");}
 function parcelasDe(proc){return CR.filter(r=>norm(r[K.proc])===norm(proc)&&(pd(r[K.dd])||numVal(r[K.val])>0)).sort((a,b)=>(+a[K.np])-(+b[K.np]));}
 function libValor(proc){return parcelasDe(proc).filter(p=>done(p[K.lib])).reduce((s,p)=>s+numVal(p[K.val]),0);}
 function prevValor(proc){return parcelasDe(proc).reduce((s,p)=>s+numVal(p[K.val]),0);}
 // etapa atual de uma parcela (a 1ª não cumprida). retorna {etapa,resp,c,prazo} ou null se tudo ok
-const ET_DEF=[["Notificação da Comissão","Comissão","var(--comissao)",30,K.nfd],["PC parcial (OSC)","OSC","var(--osc)",20,K.pcd],["Análise GRDOC+GATEF","GRDOC/GATEF","var(--tec)",10,K.agd],["Consolidação GEDEN","GEDEN","var(--geden)",5,K.gedd],["Desembolso","—","var(--brand)",0,K.lib]];
+function etDef(){return [["Notificação da Comissão","Comissão","var(--comissao)",30,K.nfd],["PC parcial (OSC)","OSC","var(--osc)",20,K.pcd],["Análise GRDOC+GATEF","GRDOC/GATEF","var(--tec)",10,K.agd],["Consolidação DIPREC","DIPREC","var(--geden)",5,K.gedd],["Desembolso","—","var(--brand)",0,K.lib]];}
+function findKey(row,kws){for(const k in row){const kk=norm(k).toLowerCase();if(kws.every(w=>kk.includes(w)))return k;}return null;}
+function resolveKeys(){const p=CR[0]||{};
+  K.proc=findKey(p,["processo"])||K.proc;
+  K.inst=findKey(p,["institu"])||K.inst;
+  K.np=findKey(p,["parcela"])||K.np;
+  K.dd=findKey(p,["data","desemb"])||findKey(p,["data"])||K.dd;
+  K.val=findKey(p,["valor"])||K.val;
+  K.lib=findKey(p,["liberada"])||K.lib;
+  K.nfd=findKey(p,["notific","feita"])||K.nfd;
+  K.pcd=findKey(p,["parcial","apresent"])||findKey(p,["pc","feita"])||K.pcd;
+  K.agd=findKey(p,["análise","feita"])||findKey(p,["analise","feita"])||K.agd;
+  K.gedd=findKey(p,["consolid","feita"])||K.gedd;
+}
 function etapaAtual(p){const dd=pd(p[K.dd]);if(!dd)return null;const np=+p[K.np];
-  const steps=np>=3?ET_DEF:[ET_DEF[4]];
-  for(const [etapa,resp,c,off,fk] of steps){if(!done(p[fk])){const prazo=new Date(dd-off*864e5);prazo.setHours(0,0,0,0);return {etapa,resp,c,prazo,np,proc:norm(p[K.proc])};}}
+  const steps=np>=3?etDef():[etDef()[4]];
+  for(const [etapa,resp,c,off,fk] of steps){if(!done(getF(p,fk))){const prazo=new Date(dd-off*864e5);prazo.setHours(0,0,0,0);return {etapa,resp,c,prazo,np,proc:norm(p[K.proc])};}}
   return null;
 }
 function todasEtapasAbertas(){const out=[];CR.forEach(p=>{const e=etapaAtual(p);if(e){e.inst=shortInst(p[K.inst]);e.parc=p;const c=C.find(x=>norm(x[K.proc])===e.proc);e.bloco=c?isBloco(c):false;out.push(e);}});return out;}
 // linha do tempo completa de uma parcela
-function timelineParc(p){const dd=pd(p[K.dd]);if(!dd)return [];const np=+p[K.np];const steps=np>=3?ET_DEF:[ET_DEF[4]];
-  return steps.map(([etapa,resp,c,off,fk])=>{const prazo=new Date(dd-off*864e5);prazo.setHours(0,0,0,0);const cumprido=done(p[fk]);const na=norm(p[fk]).toLowerCase().includes("aplica");return {etapa,resp,c,prazo,cumprido,na,off};});}
+function timelineParc(p){const dd=pd(p[K.dd]);if(!dd)return [];const np=+p[K.np];const steps=np>=3?etDef():[etDef()[4]];
+  return steps.map(([etapa,resp,c,off,fk])=>{const prazo=new Date(dd-off*864e5);prazo.setHours(0,0,0,0);const fv=getF(p,fk);const cumprido=done(fv);const na=norm(fv).toLowerCase().includes("aplica");return {etapa,resp,c,prazo,cumprido,na,off};});}
 
 let prazoBucket="";
 const F={status:"",parl:"",busca:"",mgmt:""};
@@ -301,7 +315,7 @@ function di(l,v,f){v=norm(v);if(!v||v.toUpperCase()==="NÃO SE APLICA")return ""
 function diD(l,v){const d=pd(v);return d?di(l,fmtBR(d)):"";}
 function detail(c){const P=parcelasDe(c[K.proc]);
   const dados=[di("Processo",c[K.proc]),di("Parlamentar",c["Parlamentar"]),di("Emenda",c["Emenda"]),di("Instrumento",c["Instrumento"]),di("Projeto",c["Projeto"],true),di("Valor",money(c["Valor do convênio"])),di("Status atual",c["Status Atual"]),di("Situação DIPREC",c["Situação DIPREC"])].filter(Boolean).join("");
-  const prazos=[diD("Encerramento execução",c["Encerramento da execução"]),diD("Relatório OSC (prazo)",c["Relatório OSC - Data Prazo"]),diD("Parecer comissão (prazo)",c["Parecer comissão - Data Prazo"]),diD("GRDOC (prazo)",c["GRDOC - Data Prazo"]),diD("GATEF (prazo)",c["GATEF - Data Prazo"]),diD("GEDEN (prazo)",c["GEDEN - Data Prazo"]),diD("DIPREC (prazo)",c["DIPREC - Data Prazo"])].filter(Boolean).join("");
+  const prazos=[diD("Encerramento execução",c["Encerramento da execução"]),diD("Relatório OSC (prazo)",c["Relatório OSC - Data Prazo"]),diD("Parecer comissão (prazo)",c["Parecer comissão - Data Prazo"]),diD("GRDOC (prazo)",c["GRDOC - Data Prazo"]),diD("GATEF (prazo)",c["GATEF - Data Prazo"]),diD("Consolidação DIPREC (prazo)",c["DIPREC - Data Prazo"]||c["GEDEN - Data Prazo"])].filter(Boolean).join("");
   const tot=[di("Total previsto",money(prevValor(c[K.proc]))),di("Já desembolsado",money(libValor(c[K.proc]))),di("Saldo a liberar",money(prevValor(c[K.proc])-libValor(c[K.proc]))),di("Parcelas",String(P.length))].join("");
   let h=`<div class="det-sec">Dados</div><div class="det-grid">${dados}</div>`;
   if(prazos)h+=`<div class="det-sec">Prazos das fases</div><div class="det-grid">${prazos}</div>`;
@@ -318,7 +332,7 @@ function renderTable(data){const el=document.getElementById("table");
   document.getElementById("tbl-count").textContent=`${data.length} de ${C.length}`;
   el.querySelectorAll(".trow").forEach(row=>row.addEventListener("click",()=>{const d=row.nextElementSibling;const op=row.classList.toggle("open");if(d&&d.classList.contains("trow-detail"))d.classList.toggle("show",op);}));
 }
-function render(){buildFilters();renderKPIs();renderAgenda();renderStatus();renderDonut();cronCards();renderTable(filtered());placeProcessos();}
+function render(){resolveKeys();buildFilters();renderKPIs();renderAgenda();renderStatus();renderDonut();cronCards();renderTable(filtered());placeProcessos();}
 function rerender(){renderKPIs();cronCards();renderTable(filtered());placeProcessos();}
 document.getElementById("f-status").addEventListener("change",e=>{F.status=e.target.value;F.mgmt="";rerender();});
 document.getElementById("f-parl").addEventListener("change",e=>{F.parl=e.target.value;rerender();});
