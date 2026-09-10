@@ -265,6 +265,7 @@ function renderKPIs(){
   const valor=(noF?C:filtered()).reduce((s,c)=>s+numVal(c["Valor do convênio"]),0);
   const exec=C.filter(c=>norm(c["Status Atual"]).toLowerCase().includes("execu")).length;
   const cel=C.filter(c=>norm(c["Status Atual"]).toLowerCase().includes("celebra")).length;
+  const fin=C.filter(c=>{const s=norm(c["Status Atual"]).toLowerCase();return s.includes("finaliz")||s.includes("conclu")||s.includes("homolog");}).length;
   const extr=todasEtapasAbertas().filter(e=>e.prazo<HOJE).length;
   const bloco=C.filter(isBloco).length;
   const cards=[
@@ -272,10 +273,11 @@ function renderKPIs(){
     {n:moneyF(valor),l:"Valor acompanhado",tag:noF?"soma dos convênios":"nesta seleção",c:"var(--gold)"},
     {n:exec,l:"Em execução",tag:"clique para filtrar",c:"var(--conc)",act:"kw:execu",active:F.statusKw==="execu"},
     {n:cel,l:"Em análise (Celebração)",tag:"clique para filtrar",c:"var(--cel)",act:"kw:celebra",active:F.statusKw==="celebra"},
+    {n:fin,l:"Finalizados",tag:"clique para filtrar",c:"var(--geden)",act:"kw:finaliz",active:F.statusKw==="finaliz"},
     {n:extr,l:"Prazo extrapolado",tag:"parcelas atrasadas · ver agenda",c:"var(--venc)",act:"mg:extrapolado",active:F.mgmt==="extrapolado",mgmt:1},
     {n:bloco,l:"Em bloco",tag:"situação DIPREC",c:"var(--bloco)",act:"mg:bloco",active:F.mgmt==="bloco",mgmt:1},
   ];
-  const el=document.getElementById("kpis");el.style.gridTemplateColumns=`repeat(${cards.length},minmax(0,1fr))`;
+  const el=document.getElementById("kpis");el.style.gridTemplateColumns=`repeat(auto-fit,minmax(150px,1fr))`;
   el.innerHTML=cards.map(c=>`<div class="kpi ${c.act?'clk':''} ${c.active?'active':''} ${c.mgmt?'mgmt':''}" data-act="${c.act||''}" style="--c:${c.c}">${c.mgmt?'<span class="kpi-mgmt">gestão</span>':''}<div class="n">${c.n}</div><div class="l">${c.l}</div><div class="tag">${c.tag}</div></div>`).join("");
   el.querySelectorAll(".kpi.clk").forEach(k=>k.addEventListener("click",()=>{const a=k.dataset.act;const wasKw=F.statusKw,wasMg=F.mgmt;
     if(a==="mg:extrapolado"){clearF();prazoBucket="fora";renderAgenda();document.querySelector("#agenda").scrollIntoView({behavior:"smooth",block:"start"});rerender();return;}
