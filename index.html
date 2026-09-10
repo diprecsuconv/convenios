@@ -169,6 +169,8 @@ h1{font-family:'Space Grotesk';font-weight:700;font-size:26px;line-height:1.1}
   </div>
   <div class="section-h"><h2>Cronograma de desembolso</h2><div class="rule"></div><span class="cnt" id="cron-cnt"></span></div>
   <div id="cron-cards"></div>
+  <div class="section-h"><h2>Prestação de contas final</h2><div class="rule"></div><span class="cnt" id="pcf-cnt"></span></div>
+  <div class="panel"><div class="panel-b" id="pcf"></div></div>
   <div id="proc-bottom"></div>
   <div id="processos-block">
     <div class="section-h"><h2>Convênios</h2><div class="rule"></div><span class="cnt" id="tbl-count"></span></div>
@@ -241,7 +243,7 @@ function todasEtapasAbertas(){const out=[];CR.forEach(p=>{const e=etapaAtual(p);
 function timelineParc(p){const dd=pd(p[K.dd]);if(!dd)return [];const np=+p[K.np];const steps=np>=3?etDef():[etDef()[4]];
   return steps.map(([etapa,resp,c,off,fk,efk])=>{const prazo=new Date(dd-off*864e5);prazo.setHours(0,0,0,0);const fv=getF(p,fk);const cumprido=done(fv);const na=norm(fv).toLowerCase().includes("aplica");const efet=efk?pd(getF(p,efk)):null;return {etapa,resp,c,prazo,cumprido,na,off,efet};});}
 
-let prazoBucket="";
+let prazoBucket="",pcfBucket="";
 const F={status:"",statusKw:"",parl:"",busca:"",mgmt:""};
 function isFiltered(){return !!(F.status||F.statusKw||F.parl||F.busca||F.mgmt);}
 function convExtrapolado(c){return parcelasDe(c[K.proc]).some(p=>{const e=etapaAtual(p);return e&&e.etapa!=="Desembolso"&&e.prazo<HOJE;});}
@@ -338,6 +340,56 @@ function tlHTML(p){const steps=timelineParc(p);const ddx=x=>Math.round((x-HOJE)/
 function parcDetail(p){const dd=pd(p[K.dd]);
   const info=`<div class="pd-info"><div><span class="pd-l">Valor da parcela</span><span class="pd-v">${moneyF(p[K.val])}</span></div><div><span class="pd-l">Data do desembolso</span><span class="pd-v">${dd?fmtBR(dd):"sem data"}</span></div><div><span class="pd-l">Liberada?</span><span class="pd-v">${norm(p[K.lib])||"—"}</span></div></div>`;
   return `<div class="pd-title">Etapas da ${+p[K.np]}ª parcela</div>${tlHTML(p)}${info}`;}
+/* ===== PRESTAÇÃO DE CONTAS FINAL ===== */
+function cget(c,exact,kws){for(const k in c){if(norm(k).toLowerCase()===exact)return c[k];}const kk=findKey(c,kws);return kk!=null?c[kk]:"";}
+function encData(c){return pd(cget(c,"encerramento da execução",["encerr"]));}
+function encerrou(c){const d=encData(c);return d&&d<=HOJE;}
+function findKeyN(row,kws,not){for(const k in row){const kk=norm(k).toLowerCase();if(kws.every(w=>kk.includes(w))&&!not.some(w=>kk.includes(w)))return k;}return null;}
+function cgetN(c,kws,not){const k=findKeyN(c,kws,not);return k!=null?c[k]:"";}
+function pcfSteps(c){
+  const mk=(nome,resp,color,prazoKws,cumpKws,efKws)=>{const prazo=pd(cget(c,"",prazoKws));if(!prazo)return null;const cv=cget(c,"",cumpKws);const efet=pd(cgetN(c,efKws,["prazo","cumpr"]))||pd(cv);const cumprido=done(cv)||!!efet;return {etapa:nome,resp,c:color,prazo,cumprido,efet};};
+  return [
+    mk("Relatório da OSC","OSC","var(--osc)",["relat","osc","prazo"],["relat","osc","cumpr"],["data","relat","osc"]),
+    mk("Parecer da comissão","Comissão","var(--comissao)",["parecer","prazo"],["parecer","cumpr"],["data","parecer"]),
+    mk("Análise GRDOC","GRDOC","var(--tec)",["grdoc","prazo"],["grdoc","cumpr"],["data","relat","grdoc"]),
+    mk("Análise GATEF","GATEF","var(--gold)",["gatef","prazo"],["gatef","cumpr"],["data","relat","gatef"]),
+    mk("Consolidação DIPREC","DIPREC","var(--geden)",["diprec","prazo"],["diprec","cumpr"],["data","relat","diprec"]),
+  ].filter(Boolean);
+}
+function etapaAtualPCF(c){for(const s of pcfSteps(c)){if(!s.cumprido)return s;}return null;}
+function tlPCF(c){const steps=pcfSteps(c);const ddx=x=>Math.round((x-HOJE)/864e5);const enc=encData(c);
+  let head=enc?`<div class="tl-step"><span class="tl-ic" style="background:var(--ink-3)">⚑</span><span class="tl-et">Encerramento da execução</span><span class="tl-dt">${fmtBR(enc)}</span><span class="tl-ex"></span></div>`:"";
+  if(!steps.length)return head+`<div style="font-size:12px;color:var(--ink-3)">Sem prazos de PC final lançados.</div>`;
+  return `<div class="tl">`+head+steps.map(s=>{const n=ddx(s.prazo);let ic,cls,extra;
+    if(s.efet){ic="✓";cls="ok";extra=`<b style="color:var(--conc)">realizado em ${fmtBR(s.efet)}</b>`;}
+    else if(s.cumprido){ic="✓";cls="ok";extra="cumprido";}
+    else if(n<0){ic="!";cls="late";extra=`vencido há ${-n} ${-n===1?'dia':'dias'}`;}
+    else{ic="○";cls="wait";extra=`faltam ${n} ${n===1?'dia':'dias'}`;}
+    return `<div class="tl-step ${cls}"><span class="tl-ic">${ic}</span><span class="tl-et">${s.etapa}</span><span class="tl-dt">data limite ${fmtBR(s.prazo)}</span><span class="tl-ex">${extra}</span></div>`;}).join("")+`</div>`;}
+function renderPCF(){
+  const el=document.getElementById("pcf");
+  const encs=filtered().filter(encerrou);
+  const abertos=encs.map(c=>({c,e:etapaAtualPCF(c)})).filter(x=>x.e);
+  document.getElementById("pcf-cnt").textContent=`${encs.length} com execução encerrada`;
+  if(!encs.length){el.innerHTML=`<div class="ag-empty">📭 Nenhum convênio com execução encerrada ainda.<br><span style="font-size:12px">Esta seção mostra a prestação de contas final quando o convênio encerra a execução.</span></div>`;return;}
+  const dd=x=>Math.round((x-HOJE)/864e5);
+  const fora=abertos.filter(x=>dd(x.e.prazo)<0),p7=abertos.filter(x=>dd(x.e.prazo)>=0&&dd(x.e.prazo)<=7),p30=abertos.filter(x=>dd(x.e.prazo)>7&&dd(x.e.prazo)<=30),dep=abertos.filter(x=>dd(x.e.prazo)>30);
+  const B={fora:{l:"Fora do prazo",its:fora,c:"var(--venc)"},p7:{l:"Próximos 7 dias",its:p7,c:"var(--pend)"},p30:{l:"Em 8–30 dias",its:p30,c:"var(--brand)"},dep:{l:"Mais adiante",its:dep,c:"var(--conc)"},ok:{l:"PC final concluída",its:encs.filter(c=>!etapaAtualPCF(c)).map(c=>({c})),c:"var(--geden)"}};
+  if(!pcfBucket||!B[pcfBucket].its.length)pcfBucket=(fora.length?"fora":p7.length?"p7":p30.length?"p30":dep.length?"dep":"ok");
+  const badge=d=>{const n=dd(d);if(n<0)return `<span class="ag-days" style="background:var(--venc-l);color:var(--venc)">${-n} ${-n===1?'dia':'dias'} de atraso</span>`;if(n===0)return `<span class="ag-days" style="background:var(--pend-l);color:var(--pend)">vence hoje</span>`;return `<span class="ag-days" style="background:${n<=7?'var(--pend-l)':'var(--conc-l)'};color:${n<=7?'var(--pend)':'var(--conc)'}">faltam ${n} ${n===1?'dia':'dias'}</span>`;};
+  const item=x=>{const c=x.c,e=x.e;const sc=stColor(c["Status Atual"]);
+    return `<div class="ag-item pcf-item" data-proc="${norm(c[K.proc])}"><div class="ag-date">${e?`<div class="d">${String(e.prazo.getDate()).padStart(2,"0")}</div><div class="m">${MES[e.prazo.getMonth()]}/${String(e.prazo.getFullYear()).slice(2)}</div>`:'<div class="d">✓</div>'}</div>
+      <div class="ag-body"><div class="ag-inst">${shortInst(c[K.inst])} <span class="ag-exp">⌄</span></div><div class="ag-proc">${norm(c[K.proc])}</div>
+      <div class="ag-meta">${e?`<span class="etag" style="background:${e.c}">${e.etapa}</span>${badge(e.prazo)}`:'<span class="ag-days" style="background:var(--conc-l);color:var(--conc)">concluída</span>'}${isBloco(c)?'<span class="blocotag">em bloco</span>':''}</div>
+      <div class="ag-detail"></div></div></div>`;};
+  let html=`<div class="prazo-chips">`+Object.entries(B).map(([k,b])=>`<div class="pchip ${pcfBucket===k?'active':''}" data-b="${k}" style="--pc:${b.c}"><span class="pcn">${b.its.length}</span><span class="pcl">${b.l}</span></div>`).join("")+`</div>`;
+  const its=B[pcfBucket].its.slice().sort((a,b)=>(a.e?a.e.prazo:0)-(b.e?b.e.prazo:0));
+  if(!its.length)html+=`<div class="ag-empty">Nenhum neste período.</div>`;
+  else{const half=Math.ceil(its.length/2);html+=`<div class="prazo-cols"><div>${its.slice(0,half).map(item).join("")}</div><div>${its.slice(half).map(item).join("")}</div></div>`;}
+  el.innerHTML=html;
+  el.querySelectorAll(".pchip").forEach(ch=>ch.addEventListener("click",()=>{pcfBucket=ch.dataset.b;renderPCF();}));
+  el.querySelectorAll(".pcf-item").forEach(it=>it.addEventListener("click",()=>{const c=C.find(x=>norm(x[K.proc])===it.dataset.proc);const d=it.querySelector(".ag-detail");const op=it.classList.toggle("open");d.classList.toggle("show",op);if(op&&!d.innerHTML)d.innerHTML=tlPCF(c);}));
+}
 function cronCards(){const el=document.getElementById("cron-cards");const com=filtered().filter(c=>parcelasDe(c[K.proc]).length>0);
   document.getElementById("cron-cnt").textContent=`${com.length} convênios com parcelas`;
   el.innerHTML=com.map(c=>{const proc=c[K.proc];const ps=parcelasDe(proc);const prev=prevValor(proc);const lib=libValor(proc);const pct=prev?Math.round(lib/prev*100):0;const sc=stColor(c["Status Atual"]);
@@ -379,8 +431,8 @@ function renderTable(data){const el=document.getElementById("table");
   document.getElementById("tbl-count").textContent=`${data.length} de ${C.length}`;
   el.querySelectorAll(".trow").forEach(row=>row.addEventListener("click",()=>{const d=row.nextElementSibling;const op=row.classList.toggle("open");if(d&&d.classList.contains("trow-detail"))d.classList.toggle("show",op);}));
 }
-function render(){resolveKeys();C=C.map(cvNorm);buildFilters();renderKPIs();renderAgenda();renderStatus();renderDonut();cronCards();renderTable(filtered());placeProcessos();}
-function rerender(){renderKPIs();cronCards();renderTable(filtered());placeProcessos();}
+function render(){resolveKeys();C=C.map(cvNorm);buildFilters();renderKPIs();renderAgenda();renderStatus();renderDonut();cronCards();renderPCF();renderTable(filtered());placeProcessos();}
+function rerender(){renderKPIs();cronCards();renderPCF();renderTable(filtered());placeProcessos();}
 document.getElementById("f-status").addEventListener("change",e=>{F.status=e.target.value;F.statusKw="";F.mgmt="";rerender();});
 document.getElementById("f-parl").addEventListener("change",e=>{F.parl=e.target.value;rerender();});
 document.getElementById("f-busca").addEventListener("input",e=>{F.busca=e.target.value;rerender();});
