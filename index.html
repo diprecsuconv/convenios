@@ -348,11 +348,17 @@ function findKeyN(row,kws,not){for(const k in row){const kk=norm(k).toLowerCase(
 function cgetN(c,kws,not){const k=findKeyN(c,kws,not);return k!=null?c[k]:"";}
 function pcfSteps(c){
   const mk=(nome,resp,color,prazoKws,cumpKws,efKws)=>{const prazo=pd(cget(c,"",prazoKws));if(!prazo)return null;const cv=cget(c,"",cumpKws);const efet=pd(cgetN(c,efKws,["prazo","cumpr"]))||pd(cv);const cumprido=done(cv)||!!efet;return {etapa:nome,resp,c:color,prazo,cumprido,efet};};
+  // GRDOC e GATEF conjuntas: uma etapa só, com sub-status dos dois
+  const gPrazo=pd(cget(c,"",["grdoc","prazo"]))||pd(cget(c,"",["gatef","prazo"]));
+  const subG=[
+    {sig:"GRDOC",cumprido:done(cget(c,"",["grdoc","cumpr"]))||!!pd(cgetN(c,["data","relat","grdoc"],["prazo","cumpr"])),efet:pd(cgetN(c,["data","relat","grdoc"],["prazo","cumpr"]))},
+    {sig:"GATEF",cumprido:done(cget(c,"",["gatef","cumpr"]))||!!pd(cgetN(c,["data","relat","gatef"],["prazo","cumpr"])),efet:pd(cgetN(c,["data","relat","gatef"],["prazo","cumpr"]))},
+  ];
+  const analise=gPrazo?{etapa:"Análise GRDOC+GATEF",resp:"GRDOC/GATEF",c:"var(--tec)",prazo:gPrazo,cumprido:subG.every(s=>s.cumprido),sub:subG}:null;
   return [
     mk("Relatório da OSC","OSC","var(--osc)",["relat","osc","prazo"],["relat","osc","cumpr"],["data","relat","osc"]),
     mk("Parecer da comissão","Comissão","var(--comissao)",["parecer","prazo"],["parecer","cumpr"],["data","parecer"]),
-    mk("Análise GRDOC","GRDOC","var(--tec)",["grdoc","prazo"],["grdoc","cumpr"],["data","relat","grdoc"]),
-    mk("Análise GATEF","GATEF","var(--gold)",["gatef","prazo"],["gatef","cumpr"],["data","relat","gatef"]),
+    analise,
     mk("Consolidação DIPREC","DIPREC","var(--geden)",["diprec","prazo"],["diprec","cumpr"],["data","relat","diprec"]),
   ].filter(Boolean);
 }
@@ -361,7 +367,12 @@ function tlPCF(c){const steps=pcfSteps(c);const ddx=x=>Math.round((x-HOJE)/864e5
   let head=enc?`<div class="tl-step"><span class="tl-ic" style="background:var(--ink-3)">⚑</span><span class="tl-et">Encerramento da execução</span><span class="tl-dt">${fmtBR(enc)}</span><span class="tl-ex"></span></div>`:"";
   if(!steps.length)return head+`<div style="font-size:12px;color:var(--ink-3)">Sem prazos de PC final lançados.</div>`;
   return `<div class="tl">`+head+steps.map(s=>{const n=ddx(s.prazo);let ic,cls,extra;
-    if(s.efet){ic="✓";cls="ok";extra=`<b style="color:var(--conc)">realizado em ${fmtBR(s.efet)}</b>`;}
+    if(s.sub){ // análise conjunta GRDOC+GATEF: dois status
+      cls=s.cumprido?"ok":(n<0?"late":"wait");ic=s.cumprido?"✓":(n<0?"!":"○");
+      const subtxt=s.sub.map(x=>{const okx=x.cumprido;return `<span style="color:${okx?'var(--conc)':'var(--ink-3)'};font-weight:600">${okx?'✓':'○'} ${x.sig}${x.efet?' '+fmtBR(x.efet):''}</span>`;}).join(' &nbsp; ');
+      extra=subtxt+(s.cumprido?"":` · <span style="color:${n<0?'var(--venc)':'var(--ink-3)'}">${n<0?`vencido há ${-n} dias`:`faltam ${n} dias`}</span>`);
+    }
+    else if(s.efet){ic="✓";cls="ok";extra=`<b style="color:var(--conc)">realizado em ${fmtBR(s.efet)}</b>`;}
     else if(s.cumprido){ic="✓";cls="ok";extra="cumprido";}
     else if(n<0){ic="!";cls="late";extra=`vencido há ${-n} ${-n===1?'dia':'dias'}`;}
     else{ic="○";cls="wait";extra=`faltam ${n} ${n===1?'dia':'dias'}`;}
