@@ -84,7 +84,7 @@ h1{font-family:'Space Grotesk';font-weight:700;font-size:26px;line-height:1.1}
 .ag-detail{display:none;margin-top:10px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px}
 .ag-item.open .ag-detail{display:block}
 .tl{display:flex;flex-direction:column;gap:2px}
-.tl-step{display:grid;grid-template-columns:20px 1.4fr 90px 1fr;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px dashed var(--line-2);font-size:11.5px}
+.tl-step{display:grid;grid-template-columns:20px 1.3fr 110px 1.4fr;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px dashed var(--line-2);font-size:11.5px}
 .tl-step:last-child{border-bottom:none}
 .tl-ic{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
 .tl-step.ok .tl-ic{background:var(--conc)}
@@ -193,7 +193,8 @@ function numVal(v){if(typeof v==="number")return v;let s=String(v==null?"":v).tr
 function norm(s){return String(s==null?"":s).replace(/\s+/g," ").trim();}
 function shortInst(s){return norm(s).split(" - ")[0].split(" – ")[0];}
 const K={proc:"Processo",inst:"Instituição (OSC)",np:"Nº parcela",dd:"Data do desembolso",val:"Valor",lib:"Liberada?",
-nfd:"Notificação feita?",pcd:"PC parcial apresentada?",agd:"Análise GRDOC/GATEF feita?",gedd:"Consolidação GEDEN feita?"};
+nfd:"Notificação feita?",pcd:"PC parcial apresentada?",agd:"Análise GRDOC/GATEF feita?",gedd:"Consolidação GEDEN feita?",
+efDesemb:"Data do efetivo Desembolso",efNotif:"Data da notificação",efPC:"Data da PC parcial",efAnalise:"Data do relatório GRODC/GATEF"};
 function stColor(s){s=norm(s).toLowerCase();if(s.includes("execu"))return "var(--conc)";if(s.includes("celebra"))return "var(--cel)";if(s.includes("gerênc")||s.includes("gerenc")||s.includes("análise técnica")||s.includes("analise tecnica"))return "var(--pend)";if(s.includes("finaliz")||s.includes("aprova"))return "var(--geden)";if(s.includes("dilig"))return "var(--bloco)";return "var(--brand)";}
 function done(v){const s=norm(v).toLowerCase();return ["cumprido","sim","concluído","concluido","não se aplica","nao se aplica","feito"].includes(s);}
 function getF(p,fk){if(Array.isArray(fk)){for(const k of fk){if(p[k]!=null&&norm(p[k])!=="")return p[k];}return "";}return p[fk];}
@@ -202,7 +203,7 @@ function parcelasDe(proc){return CR.filter(r=>norm(r[K.proc])===norm(proc)&&(pd(
 function libValor(proc){return parcelasDe(proc).filter(p=>done(p[K.lib])).reduce((s,p)=>s+numVal(p[K.val]),0);}
 function prevValor(proc){return parcelasDe(proc).reduce((s,p)=>s+numVal(p[K.val]),0);}
 // etapa atual de uma parcela (a 1ª não cumprida). retorna {etapa,resp,c,prazo} ou null se tudo ok
-function etDef(){return [["Notificação da Comissão","Comissão","var(--comissao)",30,K.nfd],["PC parcial (OSC)","OSC","var(--osc)",20,K.pcd],["Análise GRDOC+GATEF","GRDOC/GATEF","var(--tec)",10,K.agd],["Consolidação DIPREC","DIPREC","var(--geden)",5,K.gedd],["Desembolso","—","var(--brand)",0,K.lib]];}
+function etDef(){return [["Notificação da Comissão","Comissão","var(--comissao)",30,K.nfd,K.efNotif],["PC parcial (OSC)","OSC","var(--osc)",20,K.pcd,K.efPC],["Análise GRDOC+GATEF","GRDOC/GATEF","var(--tec)",10,K.agd,K.efAnalise],["Consolidação DIPREC","DIPREC","var(--geden)",5,K.gedd,null],["Desembolso","—","var(--brand)",0,K.lib,K.efDesemb]];}
 function findKey(row,kws){for(const k in row){const kk=norm(k).toLowerCase();if(kws.every(w=>kk.includes(w)))return k;}return null;}
 function pickVal(r,exact,kws){for(const k in r){if(norm(k).toLowerCase()===exact)return r[k];}const k2=findKey(r,kws);return k2!=null?r[k2]:undefined;}
 function cvNorm(r){const o=Object.assign({},r);const set=(canon,val)=>{if(val!==undefined&&(o[canon]===undefined||norm(o[canon])===""))o[canon]=val;};
@@ -225,6 +226,10 @@ function resolveKeys(){const p=CR[0]||{};
   K.pcd=findKey(p,["parcial","apresent"])||findKey(p,["pc","feita"])||K.pcd;
   K.agd=findKey(p,["análise","feita"])||findKey(p,["analise","feita"])||K.agd;
   K.gedd=findKey(p,["consolid","feita"])||K.gedd;
+  K.efDesemb=findKey(p,["efetivo","desemb"])||findKey(p,["efetiv","desemb"])||K.efDesemb;
+  K.efNotif=findKey(p,["data","notific"])||K.efNotif;
+  K.efPC=findKey(p,["data","pc","parcial"])||findKey(p,["data","parcial"])||K.efPC;
+  K.efAnalise=findKey(p,["data","relat"])||K.efAnalise;
 }
 function etapaAtual(p){const dd=pd(p[K.dd]);if(!dd)return null;const np=+p[K.np];
   const steps=np>=3?etDef():[etDef()[4]];
@@ -234,7 +239,7 @@ function etapaAtual(p){const dd=pd(p[K.dd]);if(!dd)return null;const np=+p[K.np]
 function todasEtapasAbertas(){const out=[];CR.forEach(p=>{const e=etapaAtual(p);if(e){e.inst=shortInst(p[K.inst]);e.parc=p;const c=C.find(x=>norm(x[K.proc])===e.proc);e.bloco=c?isBloco(c):false;out.push(e);}});return out;}
 // linha do tempo completa de uma parcela
 function timelineParc(p){const dd=pd(p[K.dd]);if(!dd)return [];const np=+p[K.np];const steps=np>=3?etDef():[etDef()[4]];
-  return steps.map(([etapa,resp,c,off,fk])=>{const prazo=new Date(dd-off*864e5);prazo.setHours(0,0,0,0);const fv=getF(p,fk);const cumprido=done(fv);const na=norm(fv).toLowerCase().includes("aplica");return {etapa,resp,c,prazo,cumprido,na,off};});}
+  return steps.map(([etapa,resp,c,off,fk,efk])=>{const prazo=new Date(dd-off*864e5);prazo.setHours(0,0,0,0);const fv=getF(p,fk);const cumprido=done(fv);const na=norm(fv).toLowerCase().includes("aplica");const efet=efk?pd(getF(p,efk)):null;return {etapa,resp,c,prazo,cumprido,na,off,efet};});}
 
 let prazoBucket="";
 const F={status:"",statusKw:"",parl:"",busca:"",mgmt:""};
@@ -322,11 +327,16 @@ function renderAgenda(){
 function tlHTML(p){const steps=timelineParc(p);const ddx=x=>Math.round((x-HOJE)/864e5);
   if(!steps.length)return `<div style="font-size:12px;color:var(--ink-3)">Parcela sem data de desembolso lançada.</div>`;
   return `<div class="tl">`+steps.map(s=>{const n=ddx(s.prazo);let ic,cls,extra;
-    if(s.na){ic="—";cls="na";extra="não se aplica";}
+    if(s.efet){ // aconteceu de fato
+      const diff=Math.round((s.efet-s.prazo)/864e5);ic="✓";cls="ok";
+      let comp = diff>0?` · <span style="color:var(--venc)">${diff} ${diff===1?'dia':'dias'} após o limite</span>` : diff<0?` · <span style="color:var(--conc)">no prazo</span>` : ` · <span style="color:var(--conc)">no limite</span>`;
+      extra=`<b style="color:var(--conc)">feito em ${fmtBR(s.efet)}</b>${comp}`;
+    }
+    else if(s.na){ic="—";cls="na";extra="não se aplica";}
     else if(s.cumprido){ic="✓";cls="ok";extra="cumprido";}
     else if(n<0){ic="!";cls="late";extra=`vencido há ${-n} ${-n===1?'dia':'dias'}`;}
     else {ic="○";cls="wait";extra=`faltam ${n} ${n===1?'dia':'dias'}`;}
-    return `<div class="tl-step ${cls}"><span class="tl-ic">${ic}</span><span class="tl-et">${s.etapa}</span><span class="tl-dt">${fmtBR(s.prazo)}</span><span class="tl-ex">${extra}</span></div>`;}).join("")+`</div>`;}
+    return `<div class="tl-step ${cls}"><span class="tl-ic">${ic}</span><span class="tl-et">${s.etapa}</span><span class="tl-dt">limite ${fmtBR(s.prazo)}</span><span class="tl-ex">${extra}</span></div>`;}).join("")+`</div>`;}
 function parcDetail(p){const dd=pd(p[K.dd]);
   const info=`<div class="pd-info"><div><span class="pd-l">Valor da parcela</span><span class="pd-v">${moneyF(p[K.val])}</span></div><div><span class="pd-l">Data do desembolso</span><span class="pd-v">${dd?fmtBR(dd):"sem data"}</span></div><div><span class="pd-l">Liberada?</span><span class="pd-v">${norm(p[K.lib])||"—"}</span></div></div>`;
   return `<div class="pd-title">Etapas da ${+p[K.np]}ª parcela</div>${tlHTML(p)}${info}`;}
